@@ -1,16 +1,14 @@
-import os
+import threading
 from flask import Flask, request
 import telebot
 from telebot import types
 from datetime import datetime
-import threading
 
 # ====== Настройки ======
-BOT_TOKEN = "8009524027:AAHTRgwiKnUi9AAh1_LTkekGZ-mRvNzH7dY"  # Вставляй свій токен сюди
-OWNER_ID = 1470389051  # Вставляй свій ID сюди
+BOT_TOKEN = "8009524027:AAHTRgwiKnUi9AAh1_LTkekGZ-mRvNzH7dY"
+OWNER_ID = 1470389051
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
 app = Flask(__name__)
 
 # ====== База данных отзывов ======
@@ -21,35 +19,27 @@ reviews_db = {
             "reviews": []
         }
     },
-    "pending": {}  # Для временного хранения отзывов
+    "pending": {}
 }
 
 # ====== Проверка владельца ======
 def is_owner(user_id):
     return user_id == OWNER_ID
 
-# ====== Сохранение отзывов ======
-def save_db():
-    # Тут можна додати збереження в файл, якщо потрібно
-    pass
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    json_str = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "!", 200
-
-@app.route("/")
-def home():
-    return "Бот работает ✅"
-
-# ====== Обработчики ======
-
+# ====== Команда /start ======
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    bot.send_message(message.chat.id, "Привет! Я бот отзывов. Выберите команду из меню ниже.")
+    text = "Привет! Я бот отзывов, оставь свой отзыв через кнопки внизу 👇"
+    
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("📊 Посмотреть рейтинг")
+    
+    if message.from_user.id == OWNER_ID:
+        kb.add("🛠 Админ-меню")
+    
+    bot.send_message(message.chat.id, text, reply_markup=kb)
 
+# ====== Сохранение отзывов ======
 @bot.message_handler(func=lambda m: str(m.from_user.id) in reviews_db.get("pending", {}))
 def save_review(message):
     user_id = str(message.from_user.id)
@@ -63,9 +53,9 @@ def save_review(message):
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     reviews_db["admins"][key]["reviews"].append(entry)
-    save_db()
     bot.send_message(message.chat.id, f"✅ Отзыв сохранён! {'⭐️' * stars}")
 
+# ====== Просмотр рейтинга ======
 @bot.message_handler(func=lambda m: m.text == "📊 Посмотреть рейтинг")
 def show_ratings(message):
     if not reviews_db["admins"]:
@@ -86,6 +76,7 @@ def show_ratings(message):
         txt += "\n"
     bot.send_message(message.chat.id, txt or "Пока нет отзывов.")
 
+# ====== Админ-меню ======
 @bot.message_handler(func=lambda m: m.text == "🛠 Админ-меню")
 def admin_menu(message):
     if not is_owner(message.from_user.id):
@@ -116,21 +107,35 @@ def admin_actions(call):
                 line += f" — {r['text']}"
             text.append(line)
             kb.add(types.InlineKeyboardButton(f"🗑 Удалить #{i+1}", callback_data=f"delrev|{key}|{i}"))
-        bot.send_message(call.message.chat.id, "\n".join(text), reply_markup=kb)
+            bot.send_message(call.message.chat.id, "\n".join(text), reply_markup=kb)
     elif data[0] == "delrev":
         _, key, idx = data
         idx = int(idx)
         reviews = reviews_db["admins"].get(key, {}).get("reviews", [])
         if 0 <= idx < len(reviews):
             rem = reviews.pop(idx)
-            save_db()
             bot.send_message(call.message.chat.id, f"✅ Удалено: {rem['user']} ({'⭐️'*rem['stars']})")
         else:
             bot.send_message(call.message.chat.id, "Отзыв не найден.")
-        bot.answer_callback_query(call.id)
+    bot.answer_callback_query(call.id)
 
-# ====== Запуск на Render ======
+# ====== Webhook для Render ======
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route("/")
+def home():
+    return "Бот работает ✅"
+
+# ====== Запуск бота ======
+def run_bot():
+    bot.remove_webhook()  # видаляємо старий webhook
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
+
 if __name__ == "__main__":
-    bot.remove_webhook()
-    bot.set_webhook(url=f"https://telegram-review-bo.onrender.com/{BOT_TOKEN}")
+    threading.Thread(target=run_bot).start()
     app.run(host="0.0.0.0", port=8080)
