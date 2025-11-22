@@ -1,14 +1,16 @@
-import threading
-from datetime import datetime
-from flask import Flask
+import os
+from flask import Flask, request
 import telebot
 from telebot import types
+from datetime import datetime
+import threading
 
 # ====== Настройки ======
-BOT_TOKEN = "8009524027:AAHTRgwiKnUi9AAh1_LTkekGZ-mRvNzH7dY"
-OWNER_ID = 1470389051
+BOT_TOKEN = "8009524027:AAHTRgwiKnUi9AAh1_LTkekGZ-mRvNzH7dY"  # Вставляй свій токен сюди
+OWNER_ID = 1470389051  # Вставляй свій ID сюди
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
 app = Flask(__name__)
 
 # ====== База данных отзывов ======
@@ -19,18 +21,35 @@ reviews_db = {
             "reviews": []
         }
     },
-    "pending": {}
+    "pending": {}  # Для временного хранения отзывов
 }
 
-# ====== Вспомогательные функции ======
+# ====== Проверка владельца ======
 def is_owner(user_id):
     return user_id == OWNER_ID
 
+# ====== Сохранение отзывов ======
 def save_db():
     # Тут можна додати збереження в файл, якщо потрібно
     pass
 
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route("/")
+def home():
+    return "Бот работает ✅"
+
 # ====== Обработчики ======
+
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    bot.send_message(message.chat.id, "Привет! Я бот отзывов. Выберите команду из меню ниже.")
+
 @bot.message_handler(func=lambda m: str(m.from_user.id) in reviews_db.get("pending", {}))
 def save_review(message):
     user_id = str(message.from_user.id)
@@ -59,6 +78,12 @@ def show_ratings(message):
             continue
         avg = round(sum(r["stars"] for r in reviews) / len(reviews), 2)
         txt += f"{info['display']} — {'⭐️' * int(avg)} ({avg})\n"
+        for r in reviews:
+            user = r['user']
+            stars = '⭐️' * r['stars']
+            text = f" — {r['text']}" if r['text'] else ""
+            txt += f"   • {user}: {stars}{text}\n"
+        txt += "\n"
     bot.send_message(message.chat.id, txt or "Пока нет отзывов.")
 
 @bot.message_handler(func=lambda m: m.text == "🛠 Админ-меню")
@@ -102,12 +127,10 @@ def admin_actions(call):
             bot.send_message(call.message.chat.id, f"✅ Удалено: {rem['user']} ({'⭐️'*rem['stars']})")
         else:
             bot.send_message(call.message.chat.id, "Отзыв не найден.")
-    bot.answer_callback_query(call.id)
+        bot.answer_callback_query(call.id)
 
-# ====== Запуск бота ======
-def run_bot():
-    bot.infinity_polling(timeout=60, long_polling_timeout=60)
-
+# ====== Запуск на Render ======
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://telegram-review-bo.onrender.com/{BOT_TOKEN}")
     app.run(host="0.0.0.0", port=8080)
