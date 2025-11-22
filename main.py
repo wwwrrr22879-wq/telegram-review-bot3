@@ -9,7 +9,7 @@ BOT_TOKEN = "8009524027:AAHTRgwiKnUi9AAh1_LTkekGZ-mRvNzH7dY"
 OWNER_ID = 1470389051
 
 bot = telebot.TeleBot(BOT_TOKEN)
-app = Flask(name)
+app = Flask(__name__)
 
 # ====== База данных отзывов ======
 reviews_db = {
