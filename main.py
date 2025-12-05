@@ -1,5 +1,4 @@
 import os
-import threading
 from datetime import datetime
 from flask import Flask, request
 import telebot
@@ -20,7 +19,7 @@ reviews_db = {
             "reviews": []
         }
     },
-    "pending": {}  # для хранения промежуточных данных пользователей
+    "pending": {}
 }
 
 # ====== Проверка владельца ======
@@ -33,11 +32,12 @@ def main_menu_markup():
     kb.add("Оставить отзыв", "📊 Посмотреть репутацию", "🛠 Админ-меню")
     return kb
 
+# ====== Команда /start ======
 @bot.message_handler(commands=['start'])
 def start_message(message):
     bot.send_message(
         message.chat.id,
-        "Привет! Я бот отзывов, оставь свой отзыв через кнопки внизу.",
+        "Привет! Я бот поддержки и отзывов 💌\nОставь свой отзыв или посмотри репутацию администратора.",
         reply_markup=main_menu_markup()
     )
 
@@ -62,10 +62,10 @@ def save_review(message):
         if not text.startswith("#"):
             bot.send_message(message.chat.id, "Пожалуйста, напишите # и имя администратора, например #Шерлок")
             return
-        admin_key = text[1:].lower()  # берем всё после #
+        admin_key = text[1:].lower()
         step_data.update({"step": "stars", "key": admin_key, "display": text})
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        kb.add("1", "2", "3", "4", "5")
+        kb.add("1","2","3","4","5")
         bot.send_message(message.chat.id, "Сколько звезд? (1-5)", reply_markup=kb)
         return
 
@@ -91,7 +91,6 @@ def save_review(message):
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        # Создаем админа если его нет
         if admin_key not in reviews_db["admins"]:
             reviews_db["admins"][admin_key] = {"display": display_name, "reviews": []}
 
@@ -169,16 +168,16 @@ def webhook():
     json_str = request.get_data().decode("utf-8")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
-    return "!", 200
+    return "OK", 200
 
 @app.route("/")
 def home():
     return "Бот работает ✅"
 
-# ====== Запуск ======
-def run_bot():
-    bot.remove_webhook()
-    bot.infinity_polling(timeout=60, long_polling_timeout=60)
-
+# ====== Установка webhook ======
 if __name__ == "__main__":
-    run_bot()  # запускаємо тільки polling
+    # Установи свой домен Render вместо <твой-домен>
+    WEBHOOK_URL = "https://<твой-домен>/" + BOT_TOKEN
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
