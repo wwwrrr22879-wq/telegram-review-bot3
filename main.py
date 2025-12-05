@@ -37,7 +37,7 @@ def main_menu_markup():
 def start_message(message):
     bot.send_message(
         message.chat.id,
-        "Привет! Я бот поддержки и отзывов 💌\nОставь свой отзыв или посмотри репутацию администратора.",
+        "Привет! Я бот отзывов, оставь свой отзыв через кнопки внизу.",
         reply_markup=main_menu_markup()
     )
 
@@ -57,7 +57,6 @@ def save_review(message):
     step_data = reviews_db["pending"][user_id]
     text = message.text.strip()
 
-    # Шаг выбора админа
     if step_data["step"] == "admin_name":
         if not text.startswith("#"):
             bot.send_message(message.chat.id, "Пожалуйста, напишите # и имя администратора, например #Шерлок")
@@ -65,11 +64,10 @@ def save_review(message):
         admin_key = text[1:].lower()
         step_data.update({"step": "stars", "key": admin_key, "display": text})
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        kb.add("1","2","3","4","5")
+        kb.add("1", "2", "3", "4", "5")
         bot.send_message(message.chat.id, "Сколько звезд? (1-5)", reply_markup=kb)
         return
 
-    # Шаг выбора звезд
     if step_data["step"] == "stars":
         if text not in ["1","2","3","4","5"]:
             bot.send_message(message.chat.id, "Пожалуйста, выберите число от 1 до 5")
@@ -78,7 +76,6 @@ def save_review(message):
         bot.send_message(message.chat.id, "Если хотите оставить текстовый отзыв, напишите его. Если нет — напишите '-'")
         return
 
-    # Шаг текстового отзыва
     if step_data["step"] == "text":
         stars = step_data["stars"]
         admin_key = step_data["key"]
@@ -90,13 +87,10 @@ def save_review(message):
             "text": review_text,
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-
         if admin_key not in reviews_db["admins"]:
             reviews_db["admins"][admin_key] = {"display": display_name, "reviews": []}
-
         reviews_db["admins"][admin_key]["reviews"].append(entry)
         del reviews_db["pending"][user_id]
-
         bot.send_message(message.chat.id, f"✅ Отзыв сохранён! {'⭐️'*stars}", reply_markup=main_menu_markup())
 
 # ====== Просмотр рейтинга ======
@@ -168,16 +162,17 @@ def webhook():
     json_str = request.get_data().decode("utf-8")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
-    return "OK", 200
+    return "!", 200
 
 @app.route("/")
 def home():
     return "Бот работает ✅"
 
-# ====== Установка webhook ======
+# ====== Запуск ======
 if __name__ == "__main__":
-    # Установи свой домен Render вместо <твой-домен>
-    WEBHOOK_URL = "https://<твой-домен>/" + BOT_TOKEN
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
+    # Устанавливаем webhook на Render
+    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # вставь сюда https://your-app.onrender.com/BOT_TOKEN
+    if WEBHOOK_URL:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
